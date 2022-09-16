@@ -1,0 +1,207 @@
+---
+title: "isee_2022_mediation_ej"
+author: "Chen Chen"
+output: html_document
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(knitr) # Rmarkdown functions
+library(data.table) # read in data
+```
+
+First, let's check results from the practice. Next, we will discuss one new scenarios with interaction between exposure and outcome. 
+
+## Example with simple situation
+The simulated cohort includes a group of individuals living in a village using indoor biomass cookstoves and we took some measurements in a two-week period. The relationship among all variables are shown in the DAG below. We assumed that individuals are independent in this example.   
+
+The research questions are: what is the difference in systolic blood pressure attributed to being female that could be explained by the disparity in exposure to fine particulate matter due to being a female (natural indirect effect)? What is the difference in systolic blood pressure attributed to being female that is not mediated by fine particulate matter (natural direct effect)?   
+
+```{r}
+include_graphics("figures/ej_no_intermediate_confounder2_dag.png", dpi=100)
+```
+
+### Data overview
+Being female (female: binary) is the exposure, weekly average fine particulate matter (pm: continuous) is the mediator, average systolic blood pressure (sbp: continuous) is the outcome, and family socioeconomic status (ses: binary) is a confounder of mediator and outcome. The unit of pm in this dataset is 10 $\mu g/m^3$.   
+```{r}
+dt <- fread("data/isee_2022_mediation_ej.csv")
+rbind(head(dt[, -"sbp_4way"]), tail(dt[, -"sbp_4way"]))
+
+par(mfrow = c(1, 2))
+hist(dt$pm, breaks=50)
+hist(dt$sbp, breaks=50)
+par(mfrow = c(1, 1))
+
+table(dt$female)
+table(dt$ses)
+```
+
+### Mediation analysis with regression-based product method
+```{r}
+m.mod1 <- glm(pm ~ female + ses, data=dt, family="gaussian")
+y.mod1 <- glm(sbp ~ female + pm + ses, data=dt, family="gaussian")
+## model for total effect of female--note SES is not included
+t.mod1 <- glm(sbp ~ female, data=dt, family="gaussian")
+
+## use equations for continuous outcome and continuous mediator
+nde1 <- coef(summary(y.mod1))["female", 1]
+nie1 <- coef(summary(y.mod1))["pm", 1]*coef(summary(m.mod1))["female", 1]
+te_sum1 <- nde1 + nie1
+te1 <- coef(summary(t.mod1))["female", 1]
+
+out1 <-data.frame(
+  product = c(nde1, nie1, te_sum1, nie1/te_sum1, te1)
+  )
+rownames(out1) <- c("direct effect", "indirect effect", "total effect", "proportion mediated", "TE-model")
+out1 <- round(out1, digits = 2)
+print(t(out1))
+```
+
+Estimate confidence intervals using bootstrapping.  
+```{r, echo=FALSE}
+set.seed(711)
+N <- 1000
+baz <- numeric()
+for (i in 1:N) {
+  sp <- sample(1:nrow(dt), size = nrow(dt), replace = TRUE)
+  bar <- dt[sp, ]
+  
+  ## product method
+  m.mod1 <- glm(pm ~ female + ses, data=bar, family="gaussian")
+  y.mod1 <- glm(sbp ~ female + pm + ses, data=bar, family="gaussian")
+  t.mod1 <- glm(sbp ~ female, data=bar, family="gaussian")
+
+  #NDE
+  nde <- coef(summary(y.mod1))["female", 1]
+  #NIE
+  nie <- coef(summary(y.mod1))["pm", 1]*coef(summary(m.mod1))["female", 1]
+  #total effect
+  te_model <- coef(summary(t.mod1))["female", 1]
+  te_sum <- nde + nie
+  #proportion mediated
+  propm <- nie/te_sum
+  
+  baz <- rbind(baz, data.frame(nde, nie, te_sum, propm, te_model))
+}
+cis1 <- data.frame(apply(baz, 2, function(a) {
+  c(mean(a), quantile(a, probs = c(0.025, 0.975)))
+}))
+names(cis1) <- c("direct effect", "indirect effect", "total effect", "proportion mediated", "TE-model")
+rownames(cis1) <- c("mean", "lower 95% CI limit", "upper 95% CI limit")
+cis1 <- round(cis1, digits=2)
+print(cis1)
+```
+
+## Example with interaction between exposure and mediator
+What should we do if interaction exists between exposure and mediator on the outcome? In other words, what if exposing to high pm increases the systolic blood pressure more among females than males? We could decompose the total effect into four ways: the effect of the exposure in the absence of the mediator (CDE), the additive interactive effect when mediator is left to what it would be in the absence of exposure (reference interaction), the additive interactive effect operated through the effect of the exposure on mediator (mediated interaction), and the pure mediated effect.    
+
+The relationship among all variables are the same as the previous DAG.  
+```{r}
+include_graphics("figures/ej_no_intermediate_confounder2_dag.png", dpi=100)
+```
+
+### Data overview
+Being female (female) is exposure, fine particulate matter (pm) is mediator, systolic blood pressure (sbp_4way) is outcome, and family socioeconomic status (ses) is confounder of mediator and outcome.  
+```{r}
+dt <- fread("data/isee_2022_mediation_ej.csv")
+rbind(head(dt[, -"sbp"]), tail(dt[, -"sbp"]))
+
+par(mfrow = c(1, 2))
+hist(dt$pm, breaks=50)
+hist(dt$sbp_4way, breaks=50)
+par(mfrow = c(1, 1))
+
+table(dt$female)
+table(dt$ses)
+```
+
+### Mediation analysis with regression-based product method
+```{r}
+## based on VanderWeele TJ. 2014. A unification of mediation and interaction: a four-way decomposition. Epidemiology 25:749–761; doi:10.1097/EDE.0000000000000121.
+## more complete functions: https://github.com/Unalmut/4way-decomposition
+## mediator model
+m.mod2 <- glm(pm ~ female + ses, data=dt, family="gaussian")
+## outcome model
+y.mod2 <- glm(sbp_4way ~ female * pm + ses, data=dt, family="gaussian")
+## model for total effect of female
+t.mod2 <- glm(sbp_4way ~ female, data=dt, family="gaussian")
+
+#CDE: effect of exposure (female) on outcome (sbp) without mediator (pm)
+#do females have higher sbp than males when there is no pm exposure?
+cde <- summary(y.mod2)$coefficients["female", 1]
+
+#Pure indirect effect: difference in effect due to difference in mediator as a result of different exposure
+#do females have higher sbp than males solely due to the higher pm exposure females experienced than males
+pie <- summary(y.mod2)$coefficients["pm", 1] * summary(m.mod2)$coefficients["female", 1]
+
+#Ref.interaction: additive interaction when mediator is left to be what it would be without exposure 
+#is there differential susceptibility (different effect of pm on sbp between female and male) when the pm exposure is the same as that among males and ses set to population average
+ref.int <- summary(y.mod2)$coefficients["female:pm", 1] * 
+  (summary(m.mod2)$coefficients["(Intercept)", 1] + summary(m.mod2)$coefficients["ses", 1] * mean(dt$ses))
+#Ref.interaction setting ses to 0
+ref.int0 <- summary(y.mod2)$coefficients["female:pm", 1] * summary(m.mod2)$coefficients["(Intercept)", 1]
+#Ref.interaction setting ses to 1
+ref.int1 <- summary(y.mod2)$coefficients["female:pm", 1] * sum(summary(m.mod2)$coefficients[c("(Intercept)", "ses"), 1])
+
+#Mediated interaction: additive interaction operated through the effect of the exposure (female) on mediator (pm)
+#is there differential susceptibility (different effect of being female on sbp between high and low pm exposure) operated through the effect of being female on pm exposure
+med.int <- summary(y.mod2)$coefficients["female:pm", 1] * summary(m.mod2)$coefficients["female", 1]
+
+## total effect by model
+te_model <- summary(t.mod2)$coefficients["female", 1]
+te_sum <-  cde + ref.int + med.int + pie
+
+out2 <- data.frame(
+  product = c(cde, ref.int, med.int, pie, te_sum, te_model)
+  )
+rownames(out2) <- c("CDE", "reference interaction", "mediated interaction", "pure indirect effect", "total effect", "TE-model")
+out2 <- round(out2, digits=2)
+print(t(out2))
+```
+
+Estimate confidence intervals using bootstrapping.  
+```{r, echo=FALSE}
+set.seed(711)
+N <- 1000
+baz <- numeric()
+for (i in 1:N) {
+  sp <- sample(1:nrow(dt), size = nrow(dt), replace = TRUE)
+  bar <- dt[sp, ]
+  
+  ## product method
+  m.mod2 <- glm(pm ~ female + ses, data=bar, family="gaussian")
+  y.mod2 <- glm(sbp_4way ~ female * pm + ses, data=bar, family="gaussian")
+  t.mod2 <- glm(sbp_4way ~ female, data=bar, family="gaussian")
+  
+  #CDE
+  cde <- summary(y.mod2)$coefficients["female", 1]
+  #Ref.interaction setting ses to average
+  ref.int <- summary(y.mod2)$coefficients["female:pm", 1] * 
+    (summary(m.mod2)$coefficients["(Intercept)", 1] + summary(m.mod2)$coefficients["ses", 1] * mean(bar$ses))
+  #Mediated interaction: differential susceptibility with the same mediator (pm) but different exposure (female)
+  med.int <- summary(y.mod2)$coefficients["female:pm", 1] * summary(m.mod2)$coefficients["female", 1]
+  #Pure indirect effect: differential exposure to mediator
+  pie <- summary(y.mod2)$coefficients["pm", 1] * summary(m.mod2)$coefficients["female", 1]
+  te_model <- summary(t.mod2)$coefficients["female", 1]
+  
+  baz <- rbind(baz, data.frame(cde, ref.int, med.int, pie,  cde + ref.int + med.int + pie, te_model))
+}
+cis2 <- data.frame(apply(baz, 2, function(a) {
+  c(mean(a), quantile(a, probs = c(0.025, 0.975)))
+}))
+names(cis2) <- c("CDE", "reference interaction", "mediated interaction", "pure indirect effect", "total effect", "TE-model")
+rownames(cis2) <- c("mean", "lower 95% CI limit", "upper 95% CI limit")
+cis2 <- round(cis2, digits=2)
+print(cis2)
+```
+
+
+## Example with intermediate confounder
+What should we do if being female affects the SES (when intermediate confounder exists or assumption 4 violated)? The regression-based product method won't work here.    
+```{r}
+include_graphics("figures/ej_intermediate_confounder_dag.png", dpi=100)
+```
+
+
+

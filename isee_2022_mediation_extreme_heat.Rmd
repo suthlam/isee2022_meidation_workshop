@@ -1,0 +1,98 @@
+---
+title: "isee_2022_mediation_extreme_heat"
+author: "Chen Chen"
+output: html_document
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(knitr) # Rmarkdown functions
+library(splines) # natural cubic spline functions in model
+library(data.table) # read in data
+```
+
+Here we are showing the regression-based product method of mediation analysis with an example of simulated time-series data on extreme weather events using summer day data from 1996 to 2015 in one city. The relationship among all variables are shown in the DAG below.  
+
+The research questions are: what is the mortality risk attributed to extreme heat that could be explained by the disparity in exposure to ozone cased by extreme heat (natural indirect effect)? What is the mortality risk attributed to extreme heat that is not mediated by ozone (natural direct effect)?   
+
+```{r}
+include_graphics("figures/extreme_heat_dag.png", dpi=100)
+```
+
+
+## Data overview
+Extreme heat (eh) is exposure, ozone (ozone) is mediator, daily count of death (event) is outcome, and sesaon (day) is confounder.   
+```{r}
+dt <- fread("data/isee_2022_mediation_extreme_heat.csv")
+rbind(head(dt), tail(dt))
+
+par(mfrow = c(2, 2))
+plot(dt$eh~dt$day, type="p", pch=16)
+plot(dt$ozone~dt$day, type="l")
+plot(dt$event~dt$day, type="l")
+hist(dt$event, breaks = 30)
+par(mfrow = c(1, 1))
+
+table(dt$eh)
+quantile(dt$event)
+```
+
+## Mediation analysis with regression-based product method
+```{r}
+## mediator model
+m.mod <- glm(ozone ~ eh +  ns(day, df=4), data=dt, family="gaussian")
+## outcome model
+y.mod <- glm(event ~ eh + ozone + ns(day, df=4), data=dt, family="poisson")
+## model for total effect of exposure
+t.mod <- glm(event ~ eh + ns(day, df=4), data=dt, family="poisson")
+
+## use equations for count outcome
+nde <- exp(coef(summary(y.mod))["eh", 1]) ## natural direct effect
+nie <- exp(coef(summary(y.mod))["ozone", 1] * coef(summary(m.mod))["eh", 1]) ## natural indirect effect
+te <- nde * nie ## total effect
+te_model <- exp(coef(summary(t.mod))["eh", 1]) ## total effect estimated from the model--for comparison 
+propm <- nde * (nie - 1)/(nde * nie -1) ## proportion mediated when outcome is on a ratio scale: only use when nie and nde are in the same direction
+
+out <-data.frame(
+  estimate = c(nde, nie, te, propm, te_model)
+)
+out <- round(out, digits = 2)
+rownames(out) <- c("direct effect", "indirect effect", "total effect", "proportion mediated", "TE-model")
+print(t(out)) ## Estimates are in rate ratio
+```
+
+Estimate confidence intervals using bootstrapping.  
+```{r}
+set.seed(711)
+N <- 1000 ## number of bootstrapping
+baz <- numeric()
+for (i in 1:N) {
+  sp <- sample(1:nrow(dt), size = nrow(dt), replace = TRUE) ## randomly sample individual days from the study population with replacement
+  bar <- dt[sp, ]
+  
+  ## below are the same as main analysis without bootstrpping--except for using the sampled new dataset
+  m.mod <- glm(ozone ~ eh + ns(day, df=4), data=bar, family="gaussian")
+  y.mod <- glm(event ~ eh + ozone + ns(day, df=4), data=bar, family="poisson")
+  t.mod <- glm(event ~ eh + ns(day, df=4), data=bar, family="poisson")
+
+  #NDE
+  nde <- exp(coef(summary(y.mod))["eh", 1])
+  #NIE
+  nie <- exp(coef(summary(y.mod))["ozone", 1]*coef(summary(m.mod))["eh", 1])
+  te <- nie*nde
+  propm <- nde * (nie - 1)/(nde * nie -1)
+  te_model <- exp(coef(summary(t.mod))["eh", 1])
+
+  baz <- rbind(baz, data.frame(nde, nie, te, propm, te_model))
+}
+## calculate 95% confidence intervals
+cis <- data.frame(apply(baz, 2, function(a) {
+  c(mean(a), quantile(a, probs = c(0.025, 0.975)))
+}))
+names(cis) <- c("direct effect", "indirect effect", "total effect", "proportion mediated", "TE-model")
+rownames(cis) <- c("mean", "lower 95% CI limit", "upper 95% CI limit")
+cis <- round(cis, digits = 2)
+print(cis)
+```
+

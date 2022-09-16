@@ -1,0 +1,42 @@
+---
+title: "isee_2022_mediation_practice"
+author: "Chen Chen"
+output: html_document
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(knitr) # Rmarkdown functions
+library(data.table) # read in data
+```
+
+Let's try to apply the regression-based product method with an example of simulated cohort data on environmental justice under the simple scenario we discussed before. The cohort includes a group of individuals living in a village using indoor biomass cookstoves and we took some measurements in a two-week period. The relationship among all variables are shown in the DAG below. We assumed that individuals are independent in this example. 
+
+The research questions are: what is the difference in systolic blood pressure attributed to being female that could be explained by the disparity in exposure to fine particulate matter due to being a female (natural indirect effect)? What is the difference in systolic blood pressure attributed to being female that is not mediated by fine particulate matter (natural direct effect)?   
+
+```{r}
+include_graphics("figures/ej_no_intermediate_confounder2_dag.png", dpi=100)
+```
+
+### Data overview
+Being female (female: binary) is the exposure, weekly average fine particulate matter (pm: continuous) is the mediator, average systolic blood pressure (sbp: continuous) is the outcome, and family socioeconomic status (ses: binary) is a confounder of mediator and outcome. The unit of pm in this dataset is 10 $\mu g/m^3$.   
+```{r}
+dt <- fread("data/isee_2022_mediation_ej.csv")
+rbind(head(dt[, -"sbp_4way"]), tail(dt[, -"sbp_4way"]))
+
+par(mfrow = c(1, 2))
+hist(dt$pm, breaks=50)
+hist(dt$sbp, breaks=50)
+par(mfrow = c(1, 1))
+
+table(dt$female)
+table(dt$ses)
+```
+
+### Mediation analysis with regression-based product method
+Please run your analysis here.
+```{r}
+
+```
+

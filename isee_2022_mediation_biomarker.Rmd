@@ -1,0 +1,301 @@
+---
+title: "isee_2022_mediation_biomarker"
+author: "Chen Chen"
+output: html_document
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(knitr) # Rmarkdown functions
+library(data.table) # read in data
+```
+
+Here we will explore the scenario with two mediators. If the mediators are independent of each other (no arrow between them), we could estimate mediator specific indirect effects using regression-based product method discussed before and run the analysis for each mediators separately.   
+
+In this section we will focus on the scenario with two mediators in which the first mediator affects the second mediator. To illustrate this scenario, we simulated a cohort based on the DAG below. Here we have a group of individuals exposed to different levels of air pollution, and we measured two biomarkers that are indicators of inflammation and their systolic blood pressure in a two-week period. We also collected a variable to represent their socioeconomic status.   
+
+```{r}
+include_graphics("figures/biomarker_multiple_mediator_dag.png", dpi=100)
+```
+
+This scenario could be handled in two ways depending on the question of interest. If we are only interested in the effect of the second mediator (biomarker 2), the first mediator could be viewed as an intermediate confounder (violation of assumption 4) and we need to use a weighting method such as inverse probability weighting (IPW) + marginal structural model (MSM) to estimate the mediation effects. If we are interested in the joint effect of all mediators, we could treat both mediators as a whole and calculate the joint indirect effect using the regression-based product method, IPW + MSM or inverse odds ratio weighting (IORW).   
+
+## Data overview
+Having above standard air pollution (a) is exposure, two binary biomarkers are mediators (m1 and m2), systolic blood pressure (sbp) is outcome, and family socioeconomic status (ses) is confounder.   
+```{r}
+dt <- fread("data/isee_2022_mediation_biomarkers.csv")
+rbind(head(dt), tail(dt))
+
+hist(dt$sbp, breaks=50)
+
+table(dt$a)
+xtabs(~a + m1, dt)
+xtabs(~a + m2, dt)
+table(dt$ses)
+```
+
+## Example--interested in effect of individual mediator biomarker 2 (IPW+MSM)
+If we are interested in disentangling the effect mediated through individual mediators, we could use weighting methods to remove edges/arrows in the DAG. Below we are showing an example of estimating the effect mediated through biomarker 2 (m2). In this case, biomarker 1 (m1) is an intermediate confounder (exposure affects confounder of mediator-outcome).    
+```{r}
+## calculate inverse probability weights for exposure
+e.ps.mod3 <- glm(a ~ ses, data = dt, family = "binomial")
+dt$ps_e <- predict(e.ps.mod3, type="response", dt) ## probability of being exposed
+dt$ipw_e <- ifelse(dt$a==1, 1/dt$ps_e, 1/(1-dt$ps_e)) ## inverse probability weights for exposure
+
+# ## calculate stablized inverse probability weight for exposure--not used since the probability of either value of exposure in the example is not low
+# e.p.mod3 <- glm(a~1, data=dt, family = "binomial") ## used for stablized weight
+# dt$p_e <- predict(e.p.mod3, type="response", dt) ## probability of being exposed
+# dt$s_ipw_e <- ifelse(dt$a==1, dt$p_e/dt$ps_e, (1-dt$p_e)/(1-dt$ps_e)) ## stablized inverse probability weights for exposure
+
+## run MSM with inverse probability weights for exposure
+m.mod3 <- glm(m2 ~ a, data=dt, weights = ipw_e) # for simplicity, we conducted linear probability model instead of logistic
+```
+
+```{r}
+## DAG for the pseudo population in which edge between air pollution and ses is removed by including the IPW for exposure
+include_graphics("figures/biomarker_multiple_mediator_pse.png", dpi=100)
+```
+
+
+```{r}
+m.ps.mod3 <- glm(m2 ~ a + ses + m1, data=dt, family = "binomial")
+dt$ps_m <- predict(m.ps.mod3, type="response", dt) #probability of mediator 2
+dt$ipw_m <- ifelse(dt$m2==1, 1/dt$ps_m, 1/(1-dt$ps_m)) #inverse probability weights for mediator 2
+dt$psw_o <- dt$ipw_e * dt$ipw_m
+## run MSM with inverse probability weights for exposure and mediator 2
+y.mod3 <- glm(sbp ~ a + m2, data=dt, weights = psw_o)
+```
+
+
+```{r}
+## DAG for the pseudo population in which edges of air pollution and ses, m2 and air pollution, m2 and ses, and m2 and m1 were removed by including the IPW
+include_graphics("figures/biomarker_multiple_mediator_psm2_pse.png", dpi=100)
+```
+
+
+```{r}
+## run model without weights to estimate the total effect
+t.mod3 <- glm(sbp ~ a + ses, data=dt, family="gaussian")
+
+#nde
+de3 <- summary(y.mod3)$coefficients["a", 1]
+#nie
+ie3 <- summary(y.mod3)$coefficients["m2", 1] * summary(m.mod3)$coefficients["a", 1]
+#te
+te_model3 <- summary(t.mod3)$coefficients["a", 1]
+te_sum3 <- de3 + ie3
+
+out3 <-data.frame(
+  iptw = c(de3, ie3, te_sum3, ie3/te_sum3, te_model3)
+)
+rownames(out3) <- c("direct effect", "indirect effect", "total effect", "proportion mediated", "TE-model")
+print(round(out3, digits = 2))
+```
+
+```{r, echo=FALSE}
+## CI from bootstrap
+N <- 1000
+baz <- numeric()
+for (i in 1:N) {
+  sp <- sample(1:nrow(dt), size = nrow(dt), replace = TRUE)
+  bar <- dt[sp, ]
+  
+  t.mod3 <- glm(sbp ~ a + ses, data=bar, family="gaussian")
+  
+  e.ps.mod3 <- glm(a ~ ses, data = bar, family = "binomial")
+  bar$ps_e <- predict(e.ps.mod3, type="response", bar)
+  bar$ipw_e <- ifelse(bar$a==1, 1/bar$ps_e, 1/(1-bar$ps_e))
+  
+  m.ps.mod3 <- glm(m2 ~ a + ses + m1, data=bar, family = "binomial")
+  bar$ps_m <- predict(m.ps.mod3, type="response", bar)
+  bar$ipw_m <- ifelse(bar$m2==1, 1/bar$ps_m, 1/(1-bar$ps_m))
+  bar$psw_o <- bar$ipw_e * bar$ipw_m
+  
+  y.mod3 <- glm(sbp ~ a + m2, data=bar, weights = psw_o)
+  m.mod3 <- glm(m1 ~ a, data=bar, weights = ipw_e) # conduct linear probability model instead of logistic
+  
+  #nde
+  de3 <- summary(y.mod3)$coefficients["a", 1]
+  #nie
+  ie3 <- summary(y.mod3)$coefficients["m2", 1] * summary(m.mod3)$coefficients["a", 1]
+  #te
+  te_model3 <- summary(t.mod3)$coefficients["a", 1]
+  te_sum3 <- de3 + ie3
+  
+  baz <- rbind(baz, data.frame(de3, ie3, te_sum3, ie3/te_sum3, te_model3))
+}
+cis3 <- data.frame(apply(baz, 2, function(a) {
+  c(mean(a), quantile(a, probs = c(0.025, 0.975)))
+}))
+names(cis3) <- c("direct effect", "indirect effect", "total effect", "proportion mediated", "TE_model")
+rownames(cis3) <- c("mean", "lower 95% CI limit", "upper 95% CI limit")
+print(round(cis3, digits = 2))
+```
+
+## Example--interested in joint effect of all mediators
+If we are interested in the joint effect of all mediators, we could treat the two mediators as a whole and estimate mediation effects accordingly. Under this scenario, all methods we discussed before works. Here we are demonstrating results for product method and IORW, which could accommodate interactions as well.   
+
+```{r}
+include_graphics("figures/biomarker_multiple_mediator_dag.png", dpi=100)
+```
+
+### Mediation analysis with IORW method
+This method only requires one model for exposure and another model for outcome, making it the better choice when the joint effect of many mediators are considered.  
+```{r}
+## based on Nguyen QC, Osypuk TL, Schmidt NM, Glymour MM, Tchetgen Tchetgen EJ. 2015. Practical Guidance for Conducting Mediation Analysis With Multiple Mediators Using Inverse Odds Ratio Weighting. American Journal of Epidemiology 181:349–356; doi:10.1093/aje/kwu278.
+## mdoel to estimate the odds ratio between exposure and mediators
+e.mod2 <- glm(a ~ m1 + m2 + ses, data = dt, family = "binomial")
+
+## inverse odds ratio weighting
+dt$inverseoddsratio <- 1/(exp(coef(summary(e.mod2))["m1", 1]*dt$m1 + coef(summary(e.mod2))["m2", 1]*dt$m2))
+dt$wt_iorw <- ifelse(dt$a==0, 1, dt$inverseoddsratio)
+
+## stablized inverse odds ratio weighting
+dt$logodds <- predict(e.mod2, type="link", dt)
+dt$inverseodds <- exp(-dt$logodds)
+# dt$predprob <- predict(e.mod4, type="response", dt)
+# dt$inverseodds <- (1-dt$predprob)/dt$predprob
+dt$wt_s_iorw <- ifelse(dt$a==0, 1, dt$inverseodds) ## inverse odds weight is the stabilized inverse odds ratio weight
+
+## run model after removing edges between exposure and mediators
+y_s_iorw.mod2 <- glm(sbp ~ a + ses, data=dt, weights = wt_s_iorw, family="gaussian")
+y_iorw.mod2 <- glm(sbp ~ a + ses, data=dt, weights = wt_iorw, family="gaussian")
+```
+
+```{r}
+## DAG for the pseudo population in which edges of air pollution and m1, air pollution and m2 were removed by including the IORW
+include_graphics("figures/biomarker_multiple_mediator_iorw.png", dpi=100)
+```
+
+
+```{r}
+## run model without weights to estimate the total effect
+t.mod2 <- glm(sbp ~ a + ses, data=dt, family="gaussian")
+
+te2 <- coef(summary(t.mod2))["a", 1]
+de_s_iorw2 <- coef(summary(y_s_iorw.mod2))["a", 1]
+ie_s_iorw2 <- te2 - de_s_iorw2
+de_iorw2 <- coef(summary(y_iorw.mod2))["a", 1]
+ie_iorw2 <- te2 - de_iorw2
+
+out2 <- data.frame(
+  iorw = c(de_iorw2, ie_iorw2, te2, ie_iorw2/te2),
+  s_iorw = c(de_s_iorw2, ie_s_iorw2, te2, ie_s_iorw2/te2)
+)
+row.names(out2) <- c("direct effect", "indirect effect of both mediators", "total effect", "proportion mediated")
+print(round(out2, digits = 2))
+```
+
+
+```{r, echo=FALSE}
+## CI from bootstrap
+N <- 1000
+baz <- numeric()
+for (i in 1:N) {
+  sp <- sample(1:nrow(dt), size = nrow(dt), replace = TRUE)
+  bar <- dt[sp, ]
+  
+  ## IORW/IOW method
+  e.mod2 <- glm(a ~ m1 + m2 + ses, data = bar, family = "binomial")
+  bar$logodds <- predict(e.mod2, type="link", bar)
+  bar$inverseodds <- exp(-bar$logodds)
+  bar$wt_s_iorw <- ifelse(bar$a==0, 1, bar$inverseodds)
+  
+  bar$inverseoddsratio <- 1/(exp(coef(summary(e.mod2))["m1", 1]*bar$m1 + coef(summary(e.mod2))["m2", 1]*bar$m2))
+  bar$wt_iorw <- ifelse(bar$a==0, 1, bar$inverseoddsratio)
+  
+  y_s_iorw.mod2 <- glm(sbp ~ a + ses, data=bar, weights = wt_s_iorw, family="gaussian")
+  y_iorw.mod2 <- glm(sbp ~ a + ses, data=bar, weights = wt_iorw, family="gaussian")
+  t.mod2 <- glm(sbp ~ a + ses, data=bar, family="gaussian")
+  
+  ## total effect
+  te2 <- coef(summary(t.mod2))["a", 1]
+  ## s_iorw direct and indirect effect
+  de_s_iorw2 <- coef(summary(y_s_iorw.mod2))["a", 1]
+  ie_s_iorw2 <- te2 - de_s_iorw2
+  ## iorw direct and indirect effect
+  de_iorw2 <- coef(summary(y_iorw.mod2))["a", 1]
+  ie_iorw2 <- te2 - de_iorw2
+  
+  baz <- rbind(baz, data.frame(de_s_iorw2, ie_s_iorw2, te2, ie_s_iorw2/te2,
+                               de_iorw2, ie_iorw2, te2, ie_iorw2/te2))
+}
+cis2 <- data.frame(apply(baz, 2, function(a) {
+  c(mean(a), quantile(a, probs = c(0.025, 0.975)))
+}))
+names(cis2) <- paste0(rep(c("S_IOWR ", "IORW "), each=4), 
+                      c("direct effect", "indirect effect", "total effect", "proportion mediated"))
+rownames(cis2) <- c("mean", "lower 95% CI limit", "upper 95% CI limit")
+```
+
+
+### Mediation analysis with regression-based product method
+This method is most familiar and straightforward but requires running separate model for each mediator. Here we ran linear probability model instead of logistic model for binary mediators for simplicity.    
+```{r}
+## Product method
+m1.mod1 <- glm(m1 ~ a + ses, data=dt, family="gaussian") ## for simplicity
+m2.mod1 <- glm(m2 ~ a + ses, data=dt, family="gaussian") ## for simplicity
+y.mod1 <- glm(sbp ~ a + m1 + m2 + ses, data=dt, family="gaussian") ## Need to include all mediators in the same model
+t.mod1 <- glm(sbp ~ a + ses, data=dt, family="gaussian") 
+
+de1 <- coef(summary(y.mod1))["a", 1]
+ie1 <- coef(summary(y.mod1))["m1", 1]*coef(summary(m1.mod1))["a", 1] +
+  coef(summary(y.mod1))["m2", 1]*coef(summary(m2.mod1))["a", 1]
+te_model1 <- coef(summary(t.mod1))["a", 1]
+te_sum1 <- de1 + ie1
+
+out1 <-data.frame(
+  product = c(de1, ie1, te_sum1, ie1/te_sum1, te_model1)
+)
+rownames(out1) <- c("direct effect", "indirect effect", "total effect", "proportion mediated", "TE-model")
+print(round(out1, digits = 2))
+```
+
+```{r, echo=FALSE}
+N <- 1000
+baz <- numeric()
+for (i in 1:N) {
+  sp <- sample(1:nrow(dt), size = nrow(dt), replace = TRUE)
+  bar <- dt[sp, ]
+  
+  ## product method
+  m1.mod1 <- glm(m1 ~ a + ses, data=bar, family="gaussian") ## for simplicity
+  m2.mod1 <- glm(m2 ~ a + ses, data=bar, family="gaussian") ## for simplicity
+  y.mod1 <- glm(sbp ~ a + m1 + m2 + ses, data=bar, family="gaussian")
+  t.mod1 <- glm(sbp ~ a + ses, data=bar, family="gaussian") 
+  
+  #NDE
+  nde <- coef(summary(y.mod1))["a", 1]
+  #NIE
+  nie <- coef(summary(y.mod1))["m1", 1]*coef(summary(m1.mod1))["a", 1] +
+    coef(summary(y.mod1))["m2", 1]*coef(summary(m2.mod1))["a", 1]
+  #total effect
+  te_model <- coef(summary(t.mod1))["a", 1]
+  te_sum <- nde + nie
+  #proportion mediated
+  propm <- nie/te_sum
+  
+  baz <- rbind(baz, data.frame(nde, nie, te_sum, propm, te_model))
+}
+cis1 <- data.frame(apply(baz, 2, function(a) {
+  c(mean(a), quantile(a, probs = c(0.025, 0.975)))
+}))
+names(cis1) <- c("direct effect", "indirect effect", "total effect", "proportion mediated", "TE-model")
+rownames(cis1) <- c("mean", "lower 95% CI limit", "upper 95% CI limit")
+```
+
+
+### Comparison of product method and IORW
+```{r, echo=FALSE}
+print(round(cbind(out1, rbind(out2, NA)), digits = 2))
+cat("CI for regression-based product method", "\n")
+print(round(cis1, digits = 2))
+cat("CI for IORW method", "\n")
+print(round(cis2, digits = 2))
+```
+
+
+
+
+
