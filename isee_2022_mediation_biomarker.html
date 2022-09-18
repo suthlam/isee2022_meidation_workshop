@@ -364,7 +364,7 @@ pre code {
 
 <h1 class="title toc-ignore">isee_2022_mediation_biomarker</h1>
 <h4 class="author">Chen Chen</h4>
-<h4 class="date">16 September, 2022</h4>
+<h4 class="date">18 September, 2022</h4>
 
 </div>
 
@@ -451,7 +451,7 @@ dt$ipw_e &lt;- ifelse(dt$a==1, 1/dt$ps_e, 1/(1-dt$ps_e)) ## inverse probability 
 # ## calculate stablized inverse probability weight for exposure--not used since the probability of either value of exposure in the example is not low
 # e.p.mod3 &lt;- glm(a~1, data=dt, family = &quot;binomial&quot;) ## used for stablized weight
 # dt$p_e &lt;- predict(e.p.mod3, type=&quot;response&quot;, dt) ## probability of being exposed
-# dt$s_ipw_e &lt;- ifelse(dt$a==1, dt$p_e/dt$ps_e, (1-dt$p_e)/(1-dt$ps_e)) ## stablized inverse probability weights for exposure
+# dt$s_ipw_e &lt;- ifelse(dt$a==1, dt$p_e/dt$ps_e, (1-dt$p_e)/(1-dt$ps_e)) ## stabilized inverse probability weights for exposure
 
 ## run MSM with inverse probability weights for exposure
 m.mod3 &lt;- glm(m2 ~ a, data=dt, weights = ipw_e) # for simplicity, we conducted linear probability model instead of logistic</code></pre>
@@ -490,13 +490,13 @@ print(round(out3, digits = 2))</code></pre>
 ## proportion mediated 0.17
 ## TE-model            3.09</code></pre>
 <pre><code>##                    direct effect indirect effect total effect
-## mean                        2.59            0.45         3.04
-## lower 95% CI limit          2.34            0.32         2.70
-## upper 95% CI limit          2.87            0.60         3.41
+## mean                        2.58            0.46         3.04
+## lower 95% CI limit          2.30            0.31         2.65
+## upper 95% CI limit          2.87            0.60         3.42
 ##                    proportion mediated TE_model
 ## mean                              0.15     3.08
-## lower 95% CI limit                0.11     2.80
-## upper 95% CI limit                0.18     3.38</code></pre>
+## lower 95% CI limit                0.11     2.81
+## upper 95% CI limit                0.18     3.37</code></pre>
 </div>
 <div id="exampleinterested-in-joint-effect-of-all-mediators" class="section level2">
 <h2>Example–interested in joint effect of all mediators</h2>
@@ -593,30 +593,30 @@ print(round(out1, digits = 2))</code></pre>
 ## TE-model               3.09   NA     NA</code></pre>
 <pre><code>## CI for regression-based product method</code></pre>
 <pre><code>##                    direct effect indirect effect total effect
-## mean                        1.96            1.13         3.09
-## lower 95% CI limit          1.78            0.92         2.82
-## upper 95% CI limit          2.13            1.35         3.37
+## mean                        1.95            1.13         3.09
+## lower 95% CI limit          1.76            0.93         2.81
+## upper 95% CI limit          2.13            1.34         3.35
 ##                    proportion mediated TE-model
 ## mean                              0.37     3.09
-## lower 95% CI limit                0.32     2.82
-## upper 95% CI limit                0.41     3.37</code></pre>
+## lower 95% CI limit                0.32     2.81
+## upper 95% CI limit                0.41     3.35</code></pre>
 <pre><code>## CI for IORW method</code></pre>
 <pre><code>##                    S_IOWR direct effect S_IOWR indirect effect
-## mean                               1.93                   1.16
-## lower 95% CI limit                 1.68                   0.90
-## upper 95% CI limit                 2.19                   1.42
+## mean                               1.92                   1.17
+## lower 95% CI limit                 1.65                   0.90
+## upper 95% CI limit                 2.19                   1.46
 ##                    S_IOWR total effect S_IOWR proportion mediated
 ## mean                              3.09                       0.38
-## lower 95% CI limit                2.80                       0.30
-## upper 95% CI limit                3.38                       0.45
+## lower 95% CI limit                2.79                       0.30
+## upper 95% CI limit                3.37                       0.46
 ##                    IORW direct effect IORW indirect effect IORW total effect
-## mean                             1.94                 1.14              3.09
-## lower 95% CI limit               1.70                 0.90              2.80
-## upper 95% CI limit               2.18                 1.39              3.38
+## mean                             1.94                 1.15              3.09
+## lower 95% CI limit               1.70                 0.89              2.79
+## upper 95% CI limit               2.19                 1.42              3.37
 ##                    IORW proportion mediated
 ## mean                                   0.37
 ## lower 95% CI limit                     0.30
-## upper 95% CI limit                     0.43</code></pre>
+## upper 95% CI limit                     0.44</code></pre>
 </div>
 </div>
 

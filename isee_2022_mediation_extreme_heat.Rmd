@@ -12,7 +12,7 @@ library(splines) # natural cubic spline functions in model
 library(data.table) # read in data
 ```
 
-Here we are showing the regression-based product method of mediation analysis with an example of simulated time-series data on extreme weather events using summer day data from 1996 to 2015 in one city. The relationship among all variables are shown in the DAG below.  
+Here we are showing the regression-based product method of mediation analysis with an example of simulated time-series data on extreme weather events using summer day data from 1996 to 2015 in one city. The relationship among all variables are shown in the directed acyclic graph (DAG) below.  
 
 The research questions are: what is the mortality risk attributed to extreme heat that could be explained by the disparity in exposure to ozone cased by extreme heat (natural indirect effect)? What is the mortality risk attributed to extreme heat that is not mediated by ozone (natural direct effect)?   
 

@@ -364,7 +364,7 @@ pre code {
 
 <h1 class="title toc-ignore">isee_2022_mediation_ej</h1>
 <h4 class="author">Chen Chen</h4>
-<h4 class="date">12 September, 2022</h4>
+<h4 class="date">18 September, 2022</h4>
 
 </div>
 
@@ -425,7 +425,7 @@ table(dt$female)</code></pre>
 </div>
 <div id="mediation-analysis-with-regression-based-product-method" class="section level3">
 <h3>Mediation analysis with regression-based product method</h3>
-<pre class="r"><code>m.mod1 &lt;- glm(pm ~ female + ses, data=dt, family=&quot;gaussian&quot;)
+<pre class="r"><code>m.mod1 &lt;- glm(pm ~ female, data=dt, family=&quot;gaussian&quot;)
 y.mod1 &lt;- glm(sbp ~ female + pm + ses, data=dt, family=&quot;gaussian&quot;)
 ## model for total effect of female--note SES is not included
 t.mod1 &lt;- glm(sbp ~ female, data=dt, family=&quot;gaussian&quot;)
@@ -443,7 +443,7 @@ rownames(out1) &lt;- c(&quot;direct effect&quot;, &quot;indirect effect&quot;, &
 out1 &lt;- round(out1, digits = 2)
 print(t(out1))</code></pre>
 <pre><code>##         direct effect indirect effect total effect proportion mediated TE-model
-## product          1.97            2.48         4.45                0.56     4.44</code></pre>
+## product          1.97            2.47         4.45                0.56     4.44</code></pre>
 <p>Estimate confidence intervals using bootstrapping.</p>
 <pre><code>##                    direct effect indirect effect total effect
 ## mean                        1.97            2.48         4.45
@@ -510,7 +510,7 @@ table(dt$female)</code></pre>
 <pre class="r"><code>## based on VanderWeele TJ. 2014. A unification of mediation and interaction: a four-way decomposition. Epidemiology 25:749–761; doi:10.1097/EDE.0000000000000121.
 ## more complete functions: https://github.com/Unalmut/4way-decomposition
 ## mediator model
-m.mod2 &lt;- glm(pm ~ female + ses, data=dt, family=&quot;gaussian&quot;)
+m.mod2 &lt;- glm(pm ~ female, data=dt, family=&quot;gaussian&quot;)
 ## outcome model
 y.mod2 &lt;- glm(sbp_4way ~ female * pm + ses, data=dt, family=&quot;gaussian&quot;)
 ## model for total effect of female
@@ -527,11 +527,13 @@ pie &lt;- summary(y.mod2)$coefficients[&quot;pm&quot;, 1] * summary(m.mod2)$coef
 #Ref.interaction: additive interaction when mediator is left to be what it would be without exposure 
 #is there differential susceptibility (different effect of pm on sbp between female and male) when the pm exposure is the same as that among males and ses set to population average
 ref.int &lt;- summary(y.mod2)$coefficients[&quot;female:pm&quot;, 1] * 
-  (summary(m.mod2)$coefficients[&quot;(Intercept)&quot;, 1] + summary(m.mod2)$coefficients[&quot;ses&quot;, 1] * mean(dt$ses))
-#Ref.interaction setting ses to 0
-ref.int0 &lt;- summary(y.mod2)$coefficients[&quot;female:pm&quot;, 1] * summary(m.mod2)$coefficients[&quot;(Intercept)&quot;, 1]
-#Ref.interaction setting ses to 1
-ref.int1 &lt;- summary(y.mod2)$coefficients[&quot;female:pm&quot;, 1] * sum(summary(m.mod2)$coefficients[c(&quot;(Intercept)&quot;, &quot;ses&quot;), 1])
+  (summary(m.mod2)$coefficients[&quot;(Intercept)&quot;, 1] 
+   # + summary(m.mod2)$coefficients[&quot;ses&quot;, 1] * mean(dt$ses) ## not needed since no confounder between exposure and mediator
+   )
+# #Ref.interaction setting ses to 0--## not needed since no confounder between exposure and mediator
+# ref.int0 &lt;- summary(y.mod2)$coefficients[&quot;female:pm&quot;, 1] * summary(m.mod2)$coefficients[&quot;(Intercept)&quot;, 1]
+# #Ref.interaction setting ses to 1--## not needed since no confounder between exposure and mediator
+# ref.int1 &lt;- summary(y.mod2)$coefficients[&quot;female:pm&quot;, 1] * sum(summary(m.mod2)$coefficients[c(&quot;(Intercept)&quot;, &quot;ses&quot;), 1])
 
 #Mediated interaction: additive interaction operated through the effect of the exposure (female) on mediator (pm)
 #is there differential susceptibility (different effect of being female on sbp between high and low pm exposure) operated through the effect of being female on pm exposure
@@ -558,7 +560,7 @@ print(t(out2))</code></pre>
 ## upper 95% CI limit 2.02                  1.17                 1.01
 ##                    pure indirect effect total effect TE-model
 ## mean                               2.45         6.57     6.57
-## lower 95% CI limit                 2.39         6.49     6.38
+## lower 95% CI limit                 2.38         6.49     6.38
 ## upper 95% CI limit                 2.51         6.65     6.78</code></pre>
 </div>
 </div>

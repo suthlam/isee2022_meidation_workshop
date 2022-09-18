@@ -46,7 +46,7 @@ dt$ipw_e <- ifelse(dt$a==1, 1/dt$ps_e, 1/(1-dt$ps_e)) ## inverse probability wei
 # ## calculate stablized inverse probability weight for exposure--not used since the probability of either value of exposure in the example is not low
 # e.p.mod3 <- glm(a~1, data=dt, family = "binomial") ## used for stablized weight
 # dt$p_e <- predict(e.p.mod3, type="response", dt) ## probability of being exposed
-# dt$s_ipw_e <- ifelse(dt$a==1, dt$p_e/dt$ps_e, (1-dt$p_e)/(1-dt$ps_e)) ## stablized inverse probability weights for exposure
+# dt$s_ipw_e <- ifelse(dt$a==1, dt$p_e/dt$ps_e, (1-dt$p_e)/(1-dt$ps_e)) ## stabilized inverse probability weights for exposure
 
 ## run MSM with inverse probability weights for exposure
 m.mod3 <- glm(m2 ~ a, data=dt, weights = ipw_e) # for simplicity, we conducted linear probability model instead of logistic

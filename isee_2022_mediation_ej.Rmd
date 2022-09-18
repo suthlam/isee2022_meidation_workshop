@@ -39,7 +39,7 @@ table(dt$ses)
 
 ### Mediation analysis with regression-based product method
 ```{r}
-m.mod1 <- glm(pm ~ female + ses, data=dt, family="gaussian")
+m.mod1 <- glm(pm ~ female, data=dt, family="gaussian")
 y.mod1 <- glm(sbp ~ female + pm + ses, data=dt, family="gaussian")
 ## model for total effect of female--note SES is not included
 t.mod1 <- glm(sbp ~ female, data=dt, family="gaussian")
@@ -121,7 +121,7 @@ table(dt$ses)
 ## based on VanderWeele TJ. 2014. A unification of mediation and interaction: a four-way decomposition. Epidemiology 25:749–761; doi:10.1097/EDE.0000000000000121.
 ## more complete functions: https://github.com/Unalmut/4way-decomposition
 ## mediator model
-m.mod2 <- glm(pm ~ female + ses, data=dt, family="gaussian")
+m.mod2 <- glm(pm ~ female, data=dt, family="gaussian")
 ## outcome model
 y.mod2 <- glm(sbp_4way ~ female * pm + ses, data=dt, family="gaussian")
 ## model for total effect of female
@@ -138,11 +138,13 @@ pie <- summary(y.mod2)$coefficients["pm", 1] * summary(m.mod2)$coefficients["fem
 #Ref.interaction: additive interaction when mediator is left to be what it would be without exposure 
 #is there differential susceptibility (different effect of pm on sbp between female and male) when the pm exposure is the same as that among males and ses set to population average
 ref.int <- summary(y.mod2)$coefficients["female:pm", 1] * 
-  (summary(m.mod2)$coefficients["(Intercept)", 1] + summary(m.mod2)$coefficients["ses", 1] * mean(dt$ses))
-#Ref.interaction setting ses to 0
-ref.int0 <- summary(y.mod2)$coefficients["female:pm", 1] * summary(m.mod2)$coefficients["(Intercept)", 1]
-#Ref.interaction setting ses to 1
-ref.int1 <- summary(y.mod2)$coefficients["female:pm", 1] * sum(summary(m.mod2)$coefficients[c("(Intercept)", "ses"), 1])
+  (summary(m.mod2)$coefficients["(Intercept)", 1] 
+   # + summary(m.mod2)$coefficients["ses", 1] * mean(dt$ses) ## not needed since no confounder between exposure and mediator
+   )
+# #Ref.interaction setting ses to 0--## not needed since no confounder between exposure and mediator
+# ref.int0 <- summary(y.mod2)$coefficients["female:pm", 1] * summary(m.mod2)$coefficients["(Intercept)", 1]
+# #Ref.interaction setting ses to 1--## not needed since no confounder between exposure and mediator
+# ref.int1 <- summary(y.mod2)$coefficients["female:pm", 1] * sum(summary(m.mod2)$coefficients[c("(Intercept)", "ses"), 1])
 
 #Mediated interaction: additive interaction operated through the effect of the exposure (female) on mediator (pm)
 #is there differential susceptibility (different effect of being female on sbp between high and low pm exposure) operated through the effect of being female on pm exposure
@@ -170,7 +172,7 @@ for (i in 1:N) {
   bar <- dt[sp, ]
   
   ## product method
-  m.mod2 <- glm(pm ~ female + ses, data=bar, family="gaussian")
+  m.mod2 <- glm(pm ~ female, data=bar, family="gaussian")
   y.mod2 <- glm(sbp_4way ~ female * pm + ses, data=bar, family="gaussian")
   t.mod2 <- glm(sbp_4way ~ female, data=bar, family="gaussian")
   
@@ -178,7 +180,9 @@ for (i in 1:N) {
   cde <- summary(y.mod2)$coefficients["female", 1]
   #Ref.interaction setting ses to average
   ref.int <- summary(y.mod2)$coefficients["female:pm", 1] * 
-    (summary(m.mod2)$coefficients["(Intercept)", 1] + summary(m.mod2)$coefficients["ses", 1] * mean(bar$ses))
+    (summary(m.mod2)$coefficients["(Intercept)", 1] 
+     # + summary(m.mod2)$coefficients["ses", 1] * mean(bar$ses) ## not needed since no confounder between exposure and mediator
+     )
   #Mediated interaction: differential susceptibility with the same mediator (pm) but different exposure (female)
   med.int <- summary(y.mod2)$coefficients["female:pm", 1] * summary(m.mod2)$coefficients["female", 1]
   #Pure indirect effect: differential exposure to mediator
